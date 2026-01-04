@@ -389,6 +389,11 @@ func (v *V2Ray) Configuration(info PriorInfo) (c Configuration, err error) {
 					Mode: v.XHTTPMode,
 				}
 			}
+		case "httpupgrade":
+			core.StreamSettings.HTTPUpgradeSettings = &coreObj.HTTPUpgradeSettings{
+				Path: v.Path,
+				Host: v.Host,
+			}
 		default:
 			return Configuration{}, fmt.Errorf("unexpected transport type: %v", v.Net)
 		}
@@ -484,8 +489,10 @@ func (v *V2Ray) ExportToURL() string {
 			setValue(&query, "quicSecurity", v.QuicSecurity)
 		case "xhttp":
 			setValue(&query, "path", v.Path)
-			setValue(&query, "host", v.Host)
 			setValue(&query, "xhttpMode", v.XHTTPMode)
+		case "httpupgrade":
+			setValue(&query, "path", v.Path)
+			setValue(&query, "host", v.Host)
 		}
 		if v.TLS != "none" {
 			setValue(&query, "flow", v.Flow)
