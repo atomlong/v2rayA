@@ -2,6 +2,68 @@
 
 ## 最近完成的工作
 
+### Vless 用户 ID 双重 URL 编码问题修复 (2026-01-24)
+
+**问题描述：**
+vless 链接中用户 ID 包含双重 URL 编码字符 `%2540`（`%40` 的编码），导致 xray 崩溃，错误：`encoding/hex: invalid byte: U+0025 '%'`
+
+**问题链接示例：**
+`vless://%2540X_Her0%2540X_Her0%2540X_Her0%2540X_Her0@star0.kharabetam.de:2053?...`
+
+**根本原因：**
+- `%2540` 是 `%40` 的 URL 编码，`%40` = `@`
+- Go 的 `url.Parse()` 只做一次解码：`%2540` → `%40`
+- 需要再解码一次：`%40` → `@`
+
+**解决方案：**
+在 `ParseVlessURL` 函数中对用户 ID 进行额外的 URL 解码处理：
+
+**修改的文件：**
+- `service/core/serverObj/v2ray.go` - `ParseVlessURL` 函数
+
+**修改内容：**
+```go
+// 处理用户 ID，可能存在双重 URL 编码的情况
+userID := u.User.String()
+if strings.Contains(userID, "%") {
+    if decoded, err := url.PathUnescape(userID); err == nil {
+        userID = decoded
+    }
+}
+```
+
+---
+
+### Vmess 协议 `raw` 传输类型支持修复 (2026-01-24)
+
+**问题描述：**
+测试 HTTP 延时时遇到错误 `unexpected transport type: raw`。vmess 链接中包含 `"net":"raw"` 的传输类型未被正确处理。
+
+**根本原因：**
+- `ParseVlessURL` 函数已经有 `raw`→`tcp` 的转换
+- `ParseVmessURL` 函数只处理了 `none`→`tcp`，缺少对 `raw` 的处理
+
+**解决方案：**
+在 `ParseVmessURL` 函数中添加 `raw`→`tcp` 的别名转换：
+
+**修改的文件：**
+- `service/core/serverObj/v2ray.go` - `ParseVmessURL` 函数
+
+**修改内容：**
+```go
+// 修改前
+if info.Net == "" || info.Net == "none" {
+    info.Net = "tcp"
+}
+
+// 修改后
+if info.Net == "" || info.Net == "none" || info.Net == "raw" {
+    info.Net = "tcp"
+}
+```
+
+---
+
 ### URL 查询参数空格问题全面修复 (2026-01-22)
 
 **问题描述：**
@@ -54,4 +116,4 @@
 - `websocket` → `ws`
 
 ## 上下文刷新时间
-2026-01-22 00:18 CST
+2026-01-24 12:17 CST
