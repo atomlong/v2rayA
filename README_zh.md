@@ -27,6 +27,66 @@ v2rayA 主要提供了下述使用方法：
 详见 [**v2rayA - Docs**](https://v2raya.org/docs/prologue/introduction/)
 
 
+## 开发者测试
+
+如果你修改了源码并想使用 systemd 服务进行测试，请按照以下步骤操作：
+
+### 1. 编译新版本
+
+```bash
+cd service
+go build -o v2raya .
+```
+
+### 2. 替换系统中的二进制文件
+
+```bash
+# 停止当前运行的服务
+sudo systemctl stop v2raya
+
+# 备份原始二进制文件
+sudo cp /usr/bin/v2raya /usr/bin/v2raya.backup
+
+# 复制新编译的二进制文件
+sudo cp ./v2raya /usr/bin/v2raya
+
+# 确保执行权限
+sudo chmod +x /usr/bin/v2raya
+```
+
+### 3. 启动服务
+
+```bash
+sudo systemctl start v2raya
+```
+
+### 4. 验证修改
+
+1. 打开浏览器访问 `http://localhost:2017`（默认端口）
+2. 进行相应的功能测试
+3. 验证修改是否生效
+
+### 5. 查看日志
+
+```bash
+# 实时查看服务日志
+sudo journalctl -u v2raya -f
+
+# 或查看日志文件
+sudo tail -f /var/log/v2raya/v2raya.log
+```
+
+### 6. 恢复原版本（可选）
+
+测试完成后，如需恢复原版本：
+
+```bash
+sudo systemctl stop v2raya
+sudo cp /usr/bin/v2raya.backup /usr/bin/v2raya
+sudo systemctl start v2raya
+```
+
+
 ## 界面截图
 
 <img src="https://i.loli.net/2020/04/19/kp2oedPiSzVwgHJ.png" border="0">

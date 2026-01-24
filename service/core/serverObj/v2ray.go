@@ -71,11 +71,18 @@ func ParseVlessURL(vless string) (data *V2Ray, err error) {
 	if err != nil {
 		return nil, err
 	}
+	// 处理用户 ID，可能存在双重 URL 编码的情况
+	userID := u.User.String()
+	if strings.Contains(userID, "%") {
+		if decoded, err := url.PathUnescape(userID); err == nil {
+			userID = decoded
+		}
+	}
 	data = &V2Ray{
 		Ps:            u.Fragment,
 		Add:           u.Hostname(),
 		Port:          u.Port(),
-		ID:            u.User.String(),
+		ID:            userID,
 		Aid:           strings.TrimSpace(u.Query().Get("aid")),
 		Net:           strings.TrimSpace(u.Query().Get("type")),
 		Type:          strings.TrimSpace(u.Query().Get("headerType")),
@@ -213,7 +220,7 @@ func ParseVmessURL(vmess string) (data *V2Ray, err error) {
 	if info.Aid == "" {
 		info.Aid = "0"
 	}
-	if info.Net == "" || info.Net == "none" {
+	if info.Net == "" || info.Net == "none" || info.Net == "raw" {
 		info.Net = "tcp"
 	}
 	info.Protocol = "vmess"
