@@ -21,7 +21,7 @@
 ### Go 后端核心依赖
 ```
 github.com/gin-gonic/gin           # Web 框架
-github.com/v2fly/v2ray-core/v5     # V2Ray 核心 (fork)
+github.com/xtls/xray-core          # Xray 核心 (替代 V2Ray)
 go.etcd.io/bbolt                   # BoltDB 嵌入式数据库
 github.com/gorilla/websocket       # WebSocket 支持
 github.com/dgrijalva/jwt-go/v4     # JWT 认证
@@ -82,7 +82,7 @@ cd ngui && pnpm dev
 |------|--------|------|
 | V2RAYA_ADDRESS | 0.0.0.0:2017 | 监听地址 |
 | V2RAYA_CONFIG | /etc/v2raya | 配置目录 |
-| V2RAYA_V2RAY_BIN | 自动检测 | v2ray 可执行文件路径 |
+| V2RAYA_V2RAY_BIN | 自动检测 | v2ray/xray 可执行文件路径 |
 | V2RAYA_V2RAY_ASSETSDIR | - | geoip.dat 等资源目录 |
 | V2RAYA_WEBDIR | - | Web 文件目录（使用外部文件） |
 | V2RAYA_LOG_LEVEL | info | 日志级别 |

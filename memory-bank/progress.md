@@ -49,8 +49,21 @@
 2. `service/core/serverObj/trojan.go`
    - ParseTrojanURL：所有 Query().Get() 参数应用 TrimSpace
 
+### 迁移到 Xray-core (2026-01-25)
+- [x] 将依赖从 v2fly/v2ray-core 迁移到 xtls/xray-core
+- [x] 适配 `sing` 库 API 变更 (v0.5.1+)
+- [x] 适配 `strmatcher` API 变更 (MatcherGroup)
+- [x] 适配 `Observatory` 服务 API
+- [x] 修复 `reservedIP` 逻辑 (198.18.0.0/15)
+- [x] 修复 `gfwlist.go` 编译错误
+- [x] 修复 REALITY ShortId 无效导致崩溃的问题
+- [x] 创建并验证集成测试脚本 `test.sh`
+
 ## 当前进行中
 - 无活跃开发任务
+
+## 待开始的工作
+- [ ] 解决无效订阅节点导致 Xray 核心启动崩溃的问题 (test.sh 已检测到)
 
 ## 待开始的工作
 - 无计划任务

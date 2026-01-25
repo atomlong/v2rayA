@@ -2,6 +2,40 @@
 
 ## 最近完成的工作
 
+### 迁移到 Xray-core (2026-01-25)
+
+**任务描述：**
+将 v2rayA 的核心依赖从 `v2fly/v2ray-core` 完全迁移到 `xtls/xray-core`，以解决依赖冲突并支持新协议。
+
+**完成工作：**
+1.  **依赖替换**：`go.mod` 中替换核心库，全项目引用路径更新。
+2.  **API 适配**：
+    *   `core/tun` (sing-box): 适配 `sing` v0.5.1+ API (InitializeReadWaiter, WaitReadPacket, InterfaceFinder)。
+    *   `core/specialMode` (strmatcher): 适配 `strmatcher` API 变更 (MatcherGroup)。
+    *   `core/v2ray` (observatory): 适配 `Observatory` 服务 API (移除 `Tag` 字段)。
+3.  **配置修复**：
+    *   修复 `reservedIP` 测试用例 (地址段从 240.0.0.0/4 变更为 198.18.0.0/15)。
+    *   修复 `gfwlist.go` 中的 `fmt.Errorf` 格式字符串错误。
+4.  **功能验证**：
+    *   编译通过，单元测试通过。
+    *   提供 `test.sh` 集成测试脚本，验证了核心功能（Web UI, 代理, Ping）。
+    *   解决了资源文件路径问题（Xray 默认查找 `xray` 目录，通过环境变量兼容）。
+
+---
+
+### REALITY ShortId 校验修复 (2026-01-25)
+
+**问题描述：**
+订阅链接中包含无效的 `shortId` (如 `f@npvt_archive`)，导致 Xray 核心启动时直接崩溃（exit status 23）。
+
+**解决方案：**
+在 `ParseVlessURL` 中增加对 `ShortId` 的正则校验 (`^[0-9a-fA-F]+$`)，非法值将被忽略（置为空），防止核心崩溃。
+
+**修改的文件：**
+- `service/core/serverObj/v2ray.go`
+
+---
+
 ### REALITY 传输类型兼容性检查 (2026-01-25)
 
 **问题描述：**
