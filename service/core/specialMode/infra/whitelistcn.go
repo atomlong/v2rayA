@@ -3,7 +3,7 @@ package infra
 import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
-	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
+	"github.com/xtls/xray-core/common/strmatcher"
 	"github.com/v2rayA/v2ray-lib/router/routercommon"
 	"github.com/v2rayA/v2rayA/core/v2ray/asset"
 	"os"
@@ -11,11 +11,11 @@ import (
 )
 
 var whitelistCn struct {
-	domainMatcher strmatcher.MatcherGroup
+	domainMatcher *strmatcher.MatcherGroup
 	sync.Mutex
 }
 
-func GetWhitelistCn(externDomains []*routercommon.Domain) (wlDomains strmatcher.MatcherGroup, err error) {
+func GetWhitelistCn(externDomains []*routercommon.Domain) (wlDomains *strmatcher.MatcherGroup, err error) {
 	whitelistCn.Lock()
 	defer whitelistCn.Unlock()
 	if whitelistCn.domainMatcher != nil {
@@ -34,7 +34,7 @@ func GetWhitelistCn(externDomains []*routercommon.Domain) (wlDomains strmatcher.
 	if err != nil {
 		return nil, fmt.Errorf("GetWhitelistCn: %w", err)
 	}
-	wlDomains = new(strmatcher.SimpleMatcherGroup)
+	wlDomains = new(strmatcher.MatcherGroup)
 	domainMatcher := new(DomainMatcherGroup)
 	fullMatcher := new(FullMatcherGroup)
 	var index uint32
@@ -49,14 +49,15 @@ func GetWhitelistCn(externDomains []*routercommon.Domain) (wlDomains strmatcher.
 				case routercommon.Domain_Full:
 					fullMatcher.Add(dm.Value)
 				case routercommon.Domain_Plain:
-					wlDomains.(strmatcher.MatcherGroupForAll).AddMatcher(strmatcher.SubstrMatcher(dm.Value), index)
+					m, _ := strmatcher.Substr.New(dm.Value)
+					wlDomains.Add(m)
 					index++
 				case routercommon.Domain_Regex:
 					r, err := strmatcher.Regex.New(dm.Value)
 					if err != nil {
 						break
 					}
-					wlDomains.(strmatcher.MatcherGroupForAll).AddMatcher(r, index)
+					wlDomains.Add(r)
 					index++
 				}
 			}
@@ -64,9 +65,9 @@ func GetWhitelistCn(externDomains []*routercommon.Domain) (wlDomains strmatcher.
 		}
 	}
 	domainMatcher.Add("lan")
-	wlDomains.(strmatcher.MatcherGroupForAll).AddMatcher(domainMatcher, index)
+	wlDomains.Add(domainMatcher)
 	index++
-	wlDomains.(strmatcher.MatcherGroupForAll).AddMatcher(fullMatcher, index)
+	wlDomains.Add(fullMatcher)
 	index++
 	whitelistCn.domainMatcher = wlDomains
 	return
