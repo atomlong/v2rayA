@@ -18,7 +18,7 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/protocol/socks"
-	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
+	"github.com/xtls/xray-core/common/strmatcher"
 	"github.com/v2rayA/v2ray-lib/router/routercommon"
 	"github.com/v2rayA/v2rayA/core/dns"
 	"github.com/v2rayA/v2rayA/core/v2ray/asset"
@@ -104,7 +104,7 @@ func (t *singTun) Start(stack Stack) error {
 		UDPTimeout:             30,
 		Handler:                t,
 		Logger:                 defaultLogger,
-		InterfaceFinder:        control.DefaultInterfaceFinder(),
+		InterfaceFinder:        control.NewDefaultInterfaceFinder(),
 	})
 	if err != nil {
 		cancel()
@@ -157,7 +157,8 @@ func (t *singTun) Close() error {
 }
 
 func (t *singTun) AddDomainWhitelist(domain string) {
-	t.dns.whitelist = append(t.dns.whitelist, strmatcher.FullMatcher(domain))
+	m, _ := strmatcher.Full.New(domain)
+	t.dns.whitelist = append(t.dns.whitelist, m)
 }
 
 func (t *singTun) AddIPWhitelist(addr netip.Addr) {
@@ -233,7 +234,8 @@ func GetWhitelistCN() (Matcher, error) {
 			for _, dm := range e.Domain {
 				switch dm.Type {
 				case routercommon.Domain_Plain:
-					matcher = append(matcher, strmatcher.SubstrMatcher(dm.Value))
+					m, _ := strmatcher.Substr.New(dm.Value)
+					matcher = append(matcher, m)
 				case routercommon.Domain_Regex:
 					r, err := strmatcher.Regex.New(dm.Value)
 					if err != nil {
@@ -241,9 +243,11 @@ func GetWhitelistCN() (Matcher, error) {
 					}
 					matcher = append(matcher, r)
 				case routercommon.Domain_RootDomain:
-					matcher = append(matcher, strmatcher.DomainMatcher(dm.Value))
+					m, _ := strmatcher.Domain.New(dm.Value)
+					matcher = append(matcher, m)
 				case routercommon.Domain_Full:
-					matcher = append(matcher, strmatcher.FullMatcher(dm.Value))
+					m, _ := strmatcher.Full.New(dm.Value)
+					matcher = append(matcher, m)
 				}
 			}
 			break

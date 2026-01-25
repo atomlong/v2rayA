@@ -36,3 +36,7 @@ node_modules
 
 # Virtualenv
 .env
+
+# Temp files
+/*.log
+/*.json
