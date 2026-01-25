@@ -298,12 +298,8 @@ func (d *DNS) newPacketConnection(ctx context.Context, conn N.PacketConn, readWa
 	ctx, cancel := context.WithCancelCause(ctx)
 	go func() {
 		var buffer *buf.Buffer
-		readWaiter.InitializeReadWaiter(func() *buf.Buffer {
-			buffer = buf.NewSize(FixedPacketSize)
-			buffer.FullReset()
-			return buffer
-		})
-		defer readWaiter.InitializeReadWaiter(nil)
+		readWaiter.InitializeReadWaiter(N.ReadWaitOptions{})
+		defer readWaiter.InitializeReadWaiter(N.ReadWaitOptions{})
 		for {
 			var message D.Msg
 			var destination M.Socksaddr
@@ -325,9 +321,11 @@ func (d *DNS) newPacketConnection(ctx context.Context, conn N.PacketConn, readWa
 				timeout := time.AfterFunc(DNSTimeout, func() {
 					cancel(context.DeadlineExceeded)
 				})
-				destination, err = readWaiter.WaitReadPacket()
+				buffer, destination, err = readWaiter.WaitReadPacket()
 				if err != nil {
-					buffer.Release()
+					if buffer != nil {
+						buffer.Release()
+					}
 					cancel(err)
 					return
 				}

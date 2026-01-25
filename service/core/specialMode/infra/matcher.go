@@ -1,7 +1,7 @@
 package infra
 
 import (
-	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
+	"github.com/xtls/xray-core/common/strmatcher"
 	"sync/atomic"
 )
 
@@ -17,7 +17,7 @@ func (g *DomainMatcherGroup) Match(dm string) bool {
 
 func (g *DomainMatcherGroup) Add(dm string) {
 	atomic.AddUint32(&g.id, 1)
-	g.g.AddDomainMatcher(strmatcher.DomainMatcher(dm), g.id)
+	g.g.Add(dm, g.id)
 }
 
 type FullMatcherGroup struct {
@@ -32,5 +32,5 @@ func (g *FullMatcherGroup) Match(dm string) bool {
 
 func (g *FullMatcherGroup) Add(dm string) {
 	atomic.AddUint32(&g.id, 1)
-	g.g.AddFullMatcher(strmatcher.FullMatcher(dm), g.id)
+	g.g.Add(dm, g.id)
 }

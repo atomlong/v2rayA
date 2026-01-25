@@ -5,7 +5,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
-	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
+	"github.com/xtls/xray-core/common/strmatcher"
 	v2router "github.com/v2rayA/v2ray-lib/router"
 	"github.com/v2rayA/v2rayA/pkg/util/log"
 	"sync"
@@ -73,7 +73,7 @@ func (d *DnsSupervisor) DeleteHandles(ifname string) (err error) {
 	return
 }
 
-func (d *DnsSupervisor) Run(ifname string, whitelistDnsServers *v2router.GeoIPMatcher, whitelistDomains strmatcher.MatcherGroup) (err error) {
+func (d *DnsSupervisor) Run(ifname string, whitelistDnsServers *v2router.GeoIPMatcher, whitelistDomains *strmatcher.MatcherGroup) (err error) {
 	defer func() {
 		recover()
 	}()

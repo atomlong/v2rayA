@@ -1,6 +1,6 @@
 package tun
 
-import "github.com/v2fly/v2ray-core/v5/common/strmatcher"
+import "github.com/xtls/xray-core/common/strmatcher"
 
 type Matcher []strmatcher.Matcher
 

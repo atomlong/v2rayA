@@ -4,8 +4,8 @@ import (
 	"context"
 	"github.com/devfeel/mapper"
 	"github.com/gin-gonic/gin"
-	"github.com/v2fly/v2ray-core/v5/app/observatory"
-	pb "github.com/v2fly/v2ray-core/v5/app/observatory/command"
+	"github.com/xtls/xray-core/app/observatory"
+	pb "github.com/xtls/xray-core/app/observatory/command"
 	"github.com/v2rayA/v2rayA/db/configure"
 	"github.com/v2rayA/v2rayA/pkg/util/log"
 	"google.golang.org/grpc"
@@ -61,9 +61,7 @@ func getObservatoryResponses(conn *grpc.ClientConn, observatoryTags []string) (r
 		observatoryTags = append(observatoryTags, "")
 	}
 	for _, tag := range observatoryTags {
-		resp, err := c.GetOutboundStatus(ctx, &pb.GetOutboundStatusRequest{
-			Tag: tag,
-		})
+		resp, err := c.GetOutboundStatus(ctx, &pb.GetOutboundStatusRequest{})
 		if err != nil {
 			return nil, err
 		}
