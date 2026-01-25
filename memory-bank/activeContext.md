@@ -2,6 +2,108 @@
 
 ## 最近完成的工作
 
+### REALITY 传输类型兼容性检查 (2026-01-25)
+
+**问题描述：**
+vless 链接使用 `security=reality` + `type=ws` (WebSocket)，但 REALITY 只支持 RAW(tcp), XHTTP, gRPC 传输类型，导致 xray 崩溃，错误：`REALITY only supports RAW, XHTTP and gRPC for now.`
+
+**问题链接示例：**
+`vless://...@188.245.51.64:52186?security=reality&type=ws#...`
+
+**根本原因：**
+- xray-core 的 REALITY 协议仅支持特定传输类型
+- 订阅源提供了不兼容的 REALITY + WebSocket 配置
+
+**解决方案：**
+在 `ParseVlessURL` 函数中检查 REALITY 的传输类型兼容性，不支持的类型降级为无 TLS：
+
+**修改的文件：**
+- `service/core/serverObj/v2ray.go` - `ParseVlessURL` 函数
+
+**修改内容：**
+```go
+// 检查 REALITY 配置的有效性
+if data.TLS == "reality" {
+    // 如果缺少必要的 publicKey (pbk)，则降级为无 TLS
+    if data.PublicKey == "" {
+        data.TLS = "none"
+    } else {
+        // REALITY 只支持 RAW(tcp), XHTTP, gRPC 传输类型
+        switch data.Net {
+        case "tcp", "xhttp", "grpc":
+            // 支持的传输类型，保持 REALITY
+        default:
+            // 不支持的传输类型（如 ws, kcp 等），降级为无 TLS
+            data.TLS = "none"
+        }
+    }
+}
+```
+
+---
+
+### Legacy XTLS 迁移到 TLS + xtls-rprx-vision (2026-01-25)
+
+**问题描述：**
+vless 链接使用旧版 XTLS (`security=xtls` + `flow=xtls-rprx-direct`)，导致 xray 崩溃，错误：`The feature Legacy XTLS has been removed and migrated to xtls-rprx-vision with TLS or REALITY`
+
+**问题链接示例：**
+`vless://...@id.artunnel57.host:443?security=xtls&flow=xtls-rprx-direct&type=tcp#...`
+
+**根本原因：**
+- 新版 xray-core 已移除 Legacy XTLS 支持
+- 需要迁移到 TLS + `xtls-rprx-vision` 或 REALITY + `xtls-rprx-vision`
+
+**解决方案：**
+在 `ParseVlessURL` 函数中自动将旧版 XTLS 迁移到 TLS + xtls-rprx-vision：
+
+**修改的文件：**
+- `service/core/serverObj/v2ray.go` - `ParseVlessURL` 函数
+
+**修改内容：**
+```go
+// 迁移旧版 XTLS 到 TLS + xtls-rprx-vision（Legacy XTLS 已被 xray-core 移除）
+if data.TLS == "xtls" {
+    data.TLS = "tls"
+    // 将旧版 flow 迁移到 xtls-rprx-vision
+    if data.Flow == "xtls-rprx-direct" || data.Flow == "xtls-rprx-splice" || data.Flow == "" {
+        data.Flow = "xtls-rprx-vision"
+    }
+}
+```
+
+---
+
+### REALITY 配置缺少 publicKey 问题修复 (2026-01-25)
+
+**问题描述：**
+vless 链接中声明 `security=reality` 但缺少必要的 `pbk` (publicKey) 参数，导致 xray 崩溃，错误：`Failed to build REALITY config. > infra/conf: empty "password"`
+
+**问题链接示例：**
+`vless://...@Nrw.zerosulution.com:903?security=reality&type=tcp#...`
+（缺少 `pbk` 参数）
+
+**根本原因：**
+- REALITY 协议需要 `publicKey` 参数才能正常工作
+- 订阅源提供了不完整的 REALITY 链接
+- v2rayA 生成了空的 `realitySettings: {}` 配置
+
+**解决方案：**
+在 `ParseVlessURL` 函数中检测无效的 REALITY 配置，如果缺少 `pbk` 则降级为无 TLS：
+
+**修改的文件：**
+- `service/core/serverObj/v2ray.go` - `ParseVlessURL` 函数
+
+**修改内容：**
+```go
+// 检查 REALITY 配置的有效性：如果缺少必要的 publicKey (pbk)，则降级为无 TLS
+if data.TLS == "reality" && data.PublicKey == "" {
+    data.TLS = "none"
+}
+```
+
+---
+
 ### Vless 用户 ID 双重 URL 编码问题修复 (2026-01-24)
 
 **问题描述：**
