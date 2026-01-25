@@ -130,6 +130,29 @@ func ParseVlessURL(vless string) (data *V2Ray, err error) {
 		if data.XHTTPMode == "" {
 			data.XHTTPMode = "auto"
 		}
+	}	// 检查 REALITY 配置的有效性
+	if data.TLS == "reality" {
+		// 如果缺少必要的 publicKey (pbk)，则降级为无 TLS
+		if data.PublicKey == "" {
+			data.TLS = "none"
+		} else {
+			// REALITY 只支持 RAW(tcp), XHTTP, gRPC 传输类型
+			switch data.Net {
+			case "tcp", "xhttp", "grpc":
+				// 支持的传输类型，保持 REALITY
+			default:
+				// 不支持的传输类型（如 ws, kcp 等），降级为无 TLS
+				data.TLS = "none"
+			}
+		}
+	}
+	// 迁移旧版 XTLS 到 TLS + xtls-rprx-vision（Legacy XTLS 已被 xray-core 移除）
+	if data.TLS == "xtls" {
+		data.TLS = "tls"
+		// 将旧版 flow 迁移到 xtls-rprx-vision
+		if data.Flow == "xtls-rprx-direct" || data.Flow == "xtls-rprx-splice" || data.Flow == "" {
+			data.Flow = "xtls-rprx-vision"
+		}
 	}
 	return data, nil
 }
