@@ -254,8 +254,11 @@ jobs:
         version=$(echo "$tag" | sed 's/^v//g')
         echo "VERSION=$version" >> $GITHUB_OUTPUT
         echo "VERSION=$version" >> $GITHUB_ENV
-        echo "PACKAGE_VERSION=$version" >> $GITHUB_OUTPUT
-        echo "PACKAGE_VERSION=$version" >> $GITHUB_ENV
+        # Replace -beta with ~beta for proper version ordering in Debian packages
+        # This ensures beta versions are considered older than stable releases
+        package_version=$(echo "$version" | sed 's/-beta/~beta/g')
+        echo "PACKAGE_VERSION=$package_version" >> $GITHUB_OUTPUT
+        echo "PACKAGE_VERSION=$package_version" >> $GITHUB_ENV
     - name: Download Artifact
       uses: actions/download-artifact@v4
       with:
