@@ -47,7 +47,9 @@ func initFunc() {
 		EnvPrefix:         "V2RAYA_",
 	})
 	if err != nil {
-		if err.Error() != "unexpected word while parsing flags: '-test.v'" {
+		// Ignore errors from test flags
+		errMsg := err.Error()
+		if !strings.HasPrefix(errMsg, "unexpected word while parsing flags: '-test.") {
 			log2.Fatal(err)
 		}
 	}
