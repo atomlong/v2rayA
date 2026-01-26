@@ -1,255 +1,87 @@
-# v2rayA 当前活动上下文
-
-## 最近完成的工作
-
-### 迁移到 Xray-core (2026-01-25)
-
-**任务描述：**
-将 v2rayA 的核心依赖从 `v2fly/v2ray-core` 完全迁移到 `xtls/xray-core`，以解决依赖冲突并支持新协议。
-
-**完成工作：**
-1.  **依赖替换**：`go.mod` 中替换核心库，全项目引用路径更新。
-2.  **API 适配**：
-    *   `core/tun` (sing-box): 适配 `sing` v0.5.1+ API (InitializeReadWaiter, WaitReadPacket, InterfaceFinder)。
-    *   `core/specialMode` (strmatcher): 适配 `strmatcher` API 变更 (MatcherGroup)。
-    *   `core/v2ray` (observatory): 适配 `Observatory` 服务 API (移除 `Tag` 字段)。
-3.  **配置修复**：
-    *   修复 `reservedIP` 测试用例 (地址段从 240.0.0.0/4 变更为 198.18.0.0/15)。
-    *   修复 `gfwlist.go` 中的 `fmt.Errorf` 格式字符串错误。
-4.  **功能验证**：
-    *   编译通过，单元测试通过。
-    *   提供 `test.sh` 集成测试脚本，验证了核心功能（Web UI, 代理, Ping）。
-    *   解决了资源文件路径问题（Xray 默认查找 `xray` 目录，通过环境变量兼容）。
-
----
-
-### REALITY ShortId 校验修复 (2026-01-25)
-
-**问题描述：**
-订阅链接中包含无效的 `shortId` (如 `f@npvt_archive`)，导致 Xray 核心启动时直接崩溃（exit status 23）。
-
-**解决方案：**
-在 `ParseVlessURL` 中增加对 `ShortId` 的正则校验 (`^[0-9a-fA-F]+$`)，非法值将被忽略（置为空），防止核心崩溃。
-
-**修改的文件：**
-- `service/core/serverObj/v2ray.go`
-
----
-
-### REALITY 传输类型兼容性检查 (2026-01-25)
-
-**问题描述：**
-vless 链接使用 `security=reality` + `type=ws` (WebSocket)，但 REALITY 只支持 RAW(tcp), XHTTP, gRPC 传输类型，导致 xray 崩溃，错误：`REALITY only supports RAW, XHTTP and gRPC for now.`
-
-**问题链接示例：**
-`vless://...@188.245.51.64:52186?security=reality&type=ws#...`
-
-**根本原因：**
-- xray-core 的 REALITY 协议仅支持特定传输类型
-- 订阅源提供了不兼容的 REALITY + WebSocket 配置
-
-**解决方案：**
-在 `ParseVlessURL` 函数中检查 REALITY 的传输类型兼容性，不支持的类型降级为无 TLS：
-
-**修改的文件：**
-- `service/core/serverObj/v2ray.go` - `ParseVlessURL` 函数
-
-**修改内容：**
-```go
-// 检查 REALITY 配置的有效性
-if data.TLS == "reality" {
-    // 如果缺少必要的 publicKey (pbk)，则降级为无 TLS
-    if data.PublicKey == "" {
-        data.TLS = "none"
-    } else {
-        // REALITY 只支持 RAW(tcp), XHTTP, gRPC 传输类型
-        switch data.Net {
-        case "tcp", "xhttp", "grpc":
-            // 支持的传输类型，保持 REALITY
-        default:
-            // 不支持的传输类型（如 ws, kcp 等），降级为无 TLS
-            data.TLS = "none"
-        }
-    }
-}
-```
-
----
-
-### Legacy XTLS 迁移到 TLS + xtls-rprx-vision (2026-01-25)
-
-**问题描述：**
-vless 链接使用旧版 XTLS (`security=xtls` + `flow=xtls-rprx-direct`)，导致 xray 崩溃，错误：`The feature Legacy XTLS has been removed and migrated to xtls-rprx-vision with TLS or REALITY`
-
-**问题链接示例：**
-`vless://...@id.artunnel57.host:443?security=xtls&flow=xtls-rprx-direct&type=tcp#...`
-
-**根本原因：**
-- 新版 xray-core 已移除 Legacy XTLS 支持
-- 需要迁移到 TLS + `xtls-rprx-vision` 或 REALITY + `xtls-rprx-vision`
-
-**解决方案：**
-在 `ParseVlessURL` 函数中自动将旧版 XTLS 迁移到 TLS + xtls-rprx-vision：
-
-**修改的文件：**
-- `service/core/serverObj/v2ray.go` - `ParseVlessURL` 函数
-
-**修改内容：**
-```go
-// 迁移旧版 XTLS 到 TLS + xtls-rprx-vision（Legacy XTLS 已被 xray-core 移除）
-if data.TLS == "xtls" {
-    data.TLS = "tls"
-    // 将旧版 flow 迁移到 xtls-rprx-vision
-    if data.Flow == "xtls-rprx-direct" || data.Flow == "xtls-rprx-splice" || data.Flow == "" {
-        data.Flow = "xtls-rprx-vision"
-    }
-}
-```
-
----
-
-### REALITY 配置缺少 publicKey 问题修复 (2026-01-25)
-
-**问题描述：**
-vless 链接中声明 `security=reality` 但缺少必要的 `pbk` (publicKey) 参数，导致 xray 崩溃，错误：`Failed to build REALITY config. > infra/conf: empty "password"`
-
-**问题链接示例：**
-`vless://...@Nrw.zerosulution.com:903?security=reality&type=tcp#...`
-（缺少 `pbk` 参数）
-
-**根本原因：**
-- REALITY 协议需要 `publicKey` 参数才能正常工作
-- 订阅源提供了不完整的 REALITY 链接
-- v2rayA 生成了空的 `realitySettings: {}` 配置
-
-**解决方案：**
-在 `ParseVlessURL` 函数中检测无效的 REALITY 配置，如果缺少 `pbk` 则降级为无 TLS：
-
-**修改的文件：**
-- `service/core/serverObj/v2ray.go` - `ParseVlessURL` 函数
-
-**修改内容：**
-```go
-// 检查 REALITY 配置的有效性：如果缺少必要的 publicKey (pbk)，则降级为无 TLS
-if data.TLS == "reality" && data.PublicKey == "" {
-    data.TLS = "none"
-}
-```
-
----
-
-### Vless 用户 ID 双重 URL 编码问题修复 (2026-01-24)
-
-**问题描述：**
-vless 链接中用户 ID 包含双重 URL 编码字符 `%2540`（`%40` 的编码），导致 xray 崩溃，错误：`encoding/hex: invalid byte: U+0025 '%'`
-
-**问题链接示例：**
-`vless://%2540X_Her0%2540X_Her0%2540X_Her0%2540X_Her0@star0.kharabetam.de:2053?...`
-
-**根本原因：**
-- `%2540` 是 `%40` 的 URL 编码，`%40` = `@`
-- Go 的 `url.Parse()` 只做一次解码：`%2540` → `%40`
-- 需要再解码一次：`%40` → `@`
-
-**解决方案：**
-在 `ParseVlessURL` 函数中对用户 ID 进行额外的 URL 解码处理：
-
-**修改的文件：**
-- `service/core/serverObj/v2ray.go` - `ParseVlessURL` 函数
-
-**修改内容：**
-```go
-// 处理用户 ID，可能存在双重 URL 编码的情况
-userID := u.User.String()
-if strings.Contains(userID, "%") {
-    if decoded, err := url.PathUnescape(userID); err == nil {
-        userID = decoded
-    }
-}
-```
-
----
-
-### Vmess 协议 `raw` 传输类型支持修复 (2026-01-24)
-
-**问题描述：**
-测试 HTTP 延时时遇到错误 `unexpected transport type: raw`。vmess 链接中包含 `"net":"raw"` 的传输类型未被正确处理。
-
-**根本原因：**
-- `ParseVlessURL` 函数已经有 `raw`→`tcp` 的转换
-- `ParseVmessURL` 函数只处理了 `none`→`tcp`，缺少对 `raw` 的处理
-
-**解决方案：**
-在 `ParseVmessURL` 函数中添加 `raw`→`tcp` 的别名转换：
-
-**修改的文件：**
-- `service/core/serverObj/v2ray.go` - `ParseVmessURL` 函数
-
-**修改内容：**
-```go
-// 修改前
-if info.Net == "" || info.Net == "none" {
-    info.Net = "tcp"
-}
-
-// 修改后
-if info.Net == "" || info.Net == "none" || info.Net == "raw" {
-    info.Net = "tcp"
-}
-```
-
----
-
-### URL 查询参数空格问题全面修复 (2026-01-22)
-
-**问题描述：**
-订阅链接中 `+` 在 `application/x-www-form-urlencoded` 编码中被解码为空格，导致多个参数解析失败，使 xray 核心崩溃。
-
-**遇到的具体错误：**
-1. `type=ws+` → `"unexpected transport type: ws "`
-2. `type=tcp+` → `"unknown transport protocol: tcp "`
-3. `fp=chrome+` → `"unknown \"fingerprint\": chrome "`
-4. `net=none` → `"unexpected transport type: none"`
-5. `type=raw` → `"unexpected transport type: raw"`
-6. `type=splithttp` → `"unexpected transport type: splithttp"`
-7. `sid=2404+` → `"invalid \"shortId\": 2404"` (REALITY 配置)
-
-**解决方案：**
-对所有从 `url.Query().Get()` 获取的参数统一应用 `strings.TrimSpace()` 清理首尾空格，同时添加传输协议别名转换。
-
-**修改的文件：**
-
-1. **service/core/serverObj/v2ray.go - ParseVlessURL 函数**
-   - 所有字段应用 TrimSpace：`aid`, `type`, `headerType`, `host`, `sni`, `path`, `security`, `fp`, `pbk`, `sid`, `spx`, `flow`, `alpn`, `allowInsecure`, `key`
-   - 后续赋值也应用 TrimSpace：`serviceName`, `host`, `seed`, `quicSecurity`
-   - 添加传输协议别名转换：`raw`→`tcp`, `splithttp`→`xhttp`
-
-2. **service/core/serverObj/v2ray.go - ParseVmessURL 函数**
-   - 添加 `none`→`tcp` 转换
-
-3. **service/core/serverObj/trojan.go - ParseTrojanURL 函数**
-   - 所有字段应用 TrimSpace：`allowInsecure`, `peer`, `sni`, `alpn`, `type`, `path`, `serviceName`, `encryption`, `host`
-
-**技术要点：**
-- URL 中 `+` 在 `application/x-www-form-urlencoded` 编码中被解码为空格是标准行为
-- `strings.TrimSpace()` 只去除首尾空白字符，不影响有效内容
-- 这些参数值本身不应包含首尾空格，因此修复是安全的
-
-## 当前状态
-
-- 无活跃开发任务
-- 代码编译验证通过
-
-## 技术笔记
-
-### URL 参数解析最佳实践
-对于所有从 `url.Query().Get()` 获取的参数，应统一应用 `strings.TrimSpace()` 进行防御性处理，避免因订阅源编码问题导致的解析失败。
-
-### 传输协议别名映射
-- `raw` → `tcp`
-- `none` → `tcp`
-- `splithttp` → `xhttp`
-- `websocket` → `ws`
-
-## 上下文刷新时间
-2026-01-24 12:17 CST
+# Active Context
+
+## 当前工作焦点
+
+### 延迟测试隔离重构（2026-01-26）
+
+**问题背景**：
+- v2rayA 延迟测试使用主 Xray 服务进程
+- 一个节点配置错误会导致 Xray 崩溃，影响所有节点测试
+- 透明代理开启时测试会干扰正常代理服务
+
+**已完成修复**：
+1. **强制 mark 标记**：所有 outbound 设置 mark=0x80，避免透明代理回环
+2. **启动插件链**：调用 `tmpl.ServePlugins()` 支持含插件的节点（SSR、obfs 等）
+3. **端口就绪检测**：`waitForPortReady()` 确保端口真正监听后再测试
+4. **错误重试机制**：`httpLatencyWithRetry()` 对 NOT STABLE 错误自动重试 2 次
+
+**修改文件**：
+- `service/server/service/latency.go`：核心测试逻辑重构
+
+**预期效果**：
+- 单节点测试失败不影响其他节点
+- 支持插件节点测试
+- 减少因进程未就绪导致的误报
+- 透明代理环境测试更稳定
+
+## 最近变更
+
+### 2026-01-26
+- 重构 HTTP 延迟测试为隔离进程模式
+- 添加 `service/core/v2ray/isolated.go` 实现独立进程管理
+- 修复透明代理 mark 标记缺失问题
+- 添加插件支持和端口就绪检测
+
+## 重要决策
+
+### 延迟测试架构
+- **决策**：每个节点使用独立 Xray 进程测试
+- **理由**：
+  - 隔离失败：一个节点崩溃不影响其他节点
+  - 不干扰主服务：测试不影响正常代理流量
+  - 参考实现：v2rayN/v2rayNG 采用类似方案
+- **权衡**：
+  - 启动开销增加，但测试并发度可控（maxParallel 参数）
+  - 内存占用增加，但每个进程生命周期短（约 10-30 秒）
+
+### 透明代理处理
+- **决策**：测试时强制设置 mark=0x80
+- **理由**：
+  - 避免透明代理规则回环重定向
+  - 保持 iptables 规则不变（不写临时规则）
+  - 与旧版本 `config_old.json` 行为一致
+
+## 模式和偏好
+
+### 代码组织
+- 进程管理放在 `service/core/v2ray/` 目录
+- 服务层逻辑在 `service/server/service/`
+- 配置模板在 `v2ray.Template` 结构
+
+### 错误处理
+- 网络错误分类明确（NOT STABLE、TIMEOUT、INVALID）
+- 支持重试机制提高成功率
+- 错误信息国际化友好
+
+## 下一步
+
+- [ ] 验证修复效果（用户测试）
+- [ ] 更新 OpenSpec proposal 状态
+- [ ] 归档 change proposal
+
+## 学习和项目洞察
+
+### Xray 进程管理
+- 每个进程需要独立的临时配置文件
+- 使用 `cmd.Start()` 而非 `cmd.Run()` 实现异步管理
+- context.Context 用于超时控制
+
+### Go 并发模式
+- 使用 sync.WaitGroup 控制并发测试
+- channel 用于限制并发数（maxParallel）
+- defer 确保资源清理（进程、配置文件、插件）
+
+### 插件系统
+- `tmpl.Plugins` 存储插件实例
+- `tmpl.ServePlugins()` 启动插件进程
+- `tmpl.Close()` 清理插件资源
