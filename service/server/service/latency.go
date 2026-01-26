@@ -1,9 +1,8 @@
 package service
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -101,8 +100,6 @@ func TestHttpLatency(which []*configure.Which, timeout time.Duration, maxParalle
 		}
 	}
 	which = whiches.Get()
-	v2rayRunning := v2ray.ProcessManager.Running()
-	wg := new(sync.WaitGroup)
 	vms := make([]serverObj.ServerObj, len(which))
 	//init vmessInfos
 	for i := range which {
@@ -114,105 +111,9 @@ func TestHttpLatency(which []*configure.Which, timeout time.Duration, maxParalle
 		}
 		vms[i] = sr.ServerObj
 	}
-	//modify the template based on current configuration
-	var (
-		tmpl *v2ray.Template
-		err  error
-	)
-	if v2rayRunning {
-		tmpl, err = v2ray.NewTemplateFromConnectedServers(nil)
-		if err != nil {
-			if !errors.Is(err, v2ray.NoConnectedServerErr) {
-				log.Warn("NewTemplateFromConnectedServers: %v", err)
-			}
-		}
-	}
-	if tmpl == nil {
-		tmpl = v2ray.NewEmptyTemplate(&configure.Setting{
-			RulePortMode:  configure.WhitelistMode,
-			TcpFastOpen:   configure.Default,
-			MuxOn:         configure.No,
-			Transparent:   configure.TransparentClose,
-			SpecialMode:   configure.SpecialModeNone,
-			AntiPollution: configure.AntipollutionClosed,
-		})
-		tmpl.SetAPI(nil)
-	}
-	inboundPortMap := make([]string, len(vms))
-	pluginPortMap := make(map[int]int)
-	var toClose []io.Closer
-	defer func() {
-		for _, l := range toClose {
-			_ = l.Close()
-		}
-	}()
-	for i, v := range vms {
-		if which[i].Latency != "" {
-			continue
-		}
-		//find a port for the inbound
-		t := time.Now()
-		var port int
-		for {
-			l, err := net.Listen("tcp", "0.0.0.0:0")
-			if err == nil {
-				port = l.Addr().(*net.TCPAddr).Port
-				toClose = append(toClose, l)
-				l2, err2 := net.ListenPacket("udp", "0.0.0.0:"+strconv.Itoa(port))
-				if err2 == nil {
-					toClose = append(toClose, l2)
-					break
-				}
-			}
-			if time.Since(t) > 3*time.Second {
-				return nil, fmt.Errorf("timeout: failed to find availble ports")
-			}
-		}
-		v2rayInboundPort := strconv.Itoa(port)
-		pluginPort := 0
-		if v.NeedPluginPort() {
-			// find a port for the plugin
-			for {
-				l, err := net.Listen("tcp", "127.0.0.1:0")
-				if err == nil {
-					toClose = append(toClose, l)
-					port = l.Addr().(*net.TCPAddr).Port
-					l2, err2 := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(port))
-					if err2 == nil {
-						toClose = append(toClose, l2)
-						break
-					}
-				}
-				if time.Since(t) > 3*time.Second {
-					return nil, fmt.Errorf("timeout: failed to find availble ports")
-				}
-			}
-			pluginPort = port
-			pluginPortMap[i] = port
-		}
-		err := tmpl.InsertMappingOutbound(v, v2rayInboundPort, false, pluginPort, "socks")
-		if err != nil {
-			if strings.Contains(err.Error(), "unsupported") {
-				which[i].Latency = "UNSUPPORTED PROTOCOL"
-				continue
-			}
-			return nil, err
-		}
-		inboundPortMap[i] = v2rayInboundPort
-	}
-	for _, l := range toClose {
-		_ = l.Close()
-	}
-	toClose = nil
-	time.Sleep(30 * time.Millisecond)
-	tmpl.Routing.DomainStrategy = "AsIs"
-	addHosts(tmpl, vms)
-	tmpl.SetOutboundSockopt()
-	if err := v2ray.ProcessManager.Start(tmpl); err != nil {
-		return nil, err
-	}
+
 	//limit the concurrency
-	wg = new(sync.WaitGroup)
+	wg := new(sync.WaitGroup)
 	cc := make(chan interface{}, maxParallel)
 	for i := range which {
 		if which[i].Latency != "" {
@@ -225,26 +126,190 @@ func TestHttpLatency(which []*configure.Which, timeout time.Duration, maxParalle
 		go func(i int) {
 			cc <- nil
 			defer func() { <-cc; wg.Done() }()
-			httpLatency(which[i], inboundPortMap[i], timeout, customTestUrl)
+
+			// Create minimal template for this node only
+			tmpl := v2ray.NewEmptyTemplate(&configure.Setting{
+				RulePortMode:  configure.WhitelistMode,
+				TcpFastOpen:   configure.Default,
+				MuxOn:         configure.No,
+				Transparent:   configure.TransparentClose,
+				SpecialMode:   configure.SpecialModeNone,
+				AntiPollution: configure.AntipollutionClosed,
+			})
+			tmpl.SetAPI(nil)
+
+			// Find available port for this test
+			l, err := net.Listen("tcp", "0.0.0.0:0")
+			if err != nil {
+				which[i].Latency = fmt.Sprintf("SYSTEM ERROR: %v", err)
+				if showLog {
+					log.Warn("Test failed[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
+				}
+				return
+			}
+			port := l.Addr().(*net.TCPAddr).Port
+			l.Close()
+
+			v2rayInboundPort := strconv.Itoa(port)
+			pluginPort := 0
+			if vms[i].NeedPluginPort() {
+				l2, err := net.Listen("tcp", "127.0.0.1:0")
+				if err != nil {
+					which[i].Latency = fmt.Sprintf("SYSTEM ERROR: %v", err)
+					if showLog {
+						log.Warn("Test failed[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
+					}
+					return
+				}
+				pluginPort = l2.Addr().(*net.TCPAddr).Port
+				l2.Close()
+			}
+
+			// Insert the outbound for this node
+			err = tmpl.InsertMappingOutbound(vms[i], v2rayInboundPort, false, pluginPort, "socks")
+			if err != nil {
+				if strings.Contains(err.Error(), "unsupported") {
+					which[i].Latency = "UNSUPPORTED PROTOCOL"
+				} else {
+					which[i].Latency = fmt.Sprintf("CONFIG ERROR: %v", err)
+				}
+				if showLog {
+					log.Warn("Test failed[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
+				}
+				return
+			}
+
+			// Set minimal routing and DNS
+			tmpl.Routing.DomainStrategy = "AsIs"
+			// Add hosts for this node only
+			if net.ParseIP(vms[i].GetHostname()) == nil {
+				if tmpl.DNS == nil {
+					tmpl.DNS = new(coreObj.DNS)
+				}
+				if tmpl.DNS.Hosts == nil {
+					tmpl.DNS.Hosts = make(coreObj.Hosts)
+				}
+				ips, err := resolv.LookupHost(vms[i].GetHostname())
+				if err == nil && len(ips) > 0 {
+					ips = v2ray.FilterIPs(ips)
+					if len(ips) > 0 {
+						tmpl.DNS.Hosts[vms[i].GetHostname()] = ips
+					}
+				}
+			}
+			// Force mark to 0x80 to avoid transparent proxy loopback
+			for j := range tmpl.Outbounds {
+				if tmpl.Outbounds[j].StreamSettings == nil {
+					tmpl.Outbounds[j].StreamSettings = new(coreObj.StreamSettings)
+				}
+				if tmpl.Outbounds[j].StreamSettings.Sockopt == nil {
+					tmpl.Outbounds[j].StreamSettings.Sockopt = new(coreObj.Sockopt)
+				}
+				mark := 0x80
+				tmpl.Outbounds[j].StreamSettings.Sockopt.Mark = &mark
+			}
+
+			// Write temporary config
+			configPath, cleanupConfig, err := v2ray.WriteTempConfig(tmpl.ToConfigBytes())
+			if err != nil {
+				which[i].Latency = fmt.Sprintf("SYSTEM ERROR: %v", err)
+				if showLog {
+					log.Warn("Test failed[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
+				}
+				return
+			}
+			defer cleanupConfig()
+
+			// Start plugins if any
+			if len(tmpl.Plugins) > 0 {
+				if err := tmpl.ServePlugins(); err != nil {
+					which[i].Latency = fmt.Sprintf("PLUGIN ERROR: %v", err)
+					if showLog {
+						log.Warn("Test failed[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
+					}
+					tmpl.Close()
+					return
+				}
+				defer tmpl.Close()
+			}
+
+			// Start isolated process
+			ctx, cancel := context.WithTimeout(context.Background(), timeout+30*time.Second)
+			defer cancel()
+
+			proc, cancelProc, err := v2ray.StartIsolatedProcess(ctx, configPath)
+			if err != nil {
+				which[i].Latency = fmt.Sprintf("PROCESS ERROR: %v", err)
+				if showLog {
+					log.Warn("Test failed[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
+				}
+				return
+			}
+			defer cancelProc()
+
+			// Wait for process to be ready with actual port check
+			if !waitForPortReady("127.0.0.1", v2rayInboundPort, 5*time.Second) {
+				which[i].Latency = "PROCESS NOT READY"
+				if showLog {
+					log.Warn("Test failed[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
+				}
+				return
+			}
+
+			// Check if process is still running
+			if proc == nil {
+				which[i].Latency = "PROCESS CRASHED"
+				if showLog {
+					log.Warn("Test failed[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
+				}
+				return
+			}
+
+			// Perform latency test with retry for NOT STABLE errors
+			httpLatencyWithRetry(which[i], v2rayInboundPort, timeout, customTestUrl, 2, showLog)
 			if showLog {
 				log.Info("Test done[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
 			}
+
+			// Process will be cleaned up by defer cancelProc()
 		}(i)
 	}
 	wg.Wait()
-	if v2rayRunning && configure.GetConnectedServers() != nil {
-		err := v2ray.UpdateV2RayConfig()
-		if err != nil {
-			return which, fmt.Errorf("cannot restart v2ray-core: %w", err)
-		}
-	} else {
-		v2ray.ProcessManager.Stop(true)
-	}
+
 	if err := configure.NewWhiches(which).SaveLatencies(); err != nil {
 		return nil, fmt.Errorf("failed to save the latency test result: %v", err)
 	}
 	return which, nil
 }
+func waitForPortReady(host string, portStr string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, portStr), 500*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return false
+}
+
+func httpLatencyWithRetry(which *configure.Which, port string, timeout time.Duration, customTestUrl string, maxRetries int, showLog bool) {
+	for retry := 0; retry <= maxRetries; retry++ {
+		httpLatency(which, port, timeout, customTestUrl)
+		if which.Latency != "NOT STABLE" {
+			// Success or other error, no need to retry
+			break
+		}
+		if retry < maxRetries {
+			if showLog {
+				log.Info("Retry[%v] for NOT STABLE: %v", retry+1, which.Link)
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+}
+
 func httpLatency(which *configure.Which, port string, timeout time.Duration, customTestUrl string) {
 	c, err := httpClient.GetHttpClientWithProxy("socks5://127.0.0.1:" + port)
 	if err != nil {
