@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"time"
 
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/bufio"
@@ -78,14 +79,14 @@ func (t *singTun) Start(stack Stack) error {
 	}
 	failedCloser = append(failedCloser, interfaceMonitor)
 	tunOptions := tun.Options{
-		Name:         tun.CalculateInterfaceName(""),
-		MTU:          9000,
-		Inet4Address: []netip.Prefix{prefix4},
+		Name:               tun.CalculateInterfaceName(""),
+		MTU:                9000,
+		Inet4Address:       []netip.Prefix{prefix4},
 		// Inet6Address:     []netip.Prefix{prefix6},
-		AutoRoute:        true,
-		StrictRoute:      false,
-		InterfaceMonitor: interfaceMonitor,
-		TableIndex:       2022,
+		AutoRoute:          true,
+		StrictRoute:        false,
+		InterfaceMonitor:   interfaceMonitor,
+		IPRoute2TableIndex: 2022,
 	}
 	tunInterface, err := tun.New(tunOptions)
 	if err != nil {
@@ -94,17 +95,13 @@ func (t *singTun) Start(stack Stack) error {
 	failedCloser = append(failedCloser, tunInterface)
 	ctx, cancel := context.WithCancel(context.Background())
 	tunStack, err := tun.NewStack(string(stack), tun.StackOptions{
-		Context:                ctx,
-		Tun:                    tunInterface,
-		MTU:                    tunOptions.MTU,
-		Name:                   tunOptions.Name,
-		Inet4Address:           tunOptions.Inet4Address,
-		Inet6Address:           tunOptions.Inet6Address,
-		EndpointIndependentNat: false,
-		UDPTimeout:             30,
-		Handler:                t,
-		Logger:                 defaultLogger,
-		InterfaceFinder:        control.NewDefaultInterfaceFinder(),
+		Context:         ctx,
+		Tun:             tunInterface,
+		TunOptions:      tunOptions,
+		UDPTimeout:      30 * time.Second,
+		Handler:         t,
+		Logger:          defaultLogger,
+		InterfaceFinder: control.NewDefaultInterfaceFinder(),
 	})
 	if err != nil {
 		cancel()
@@ -165,7 +162,15 @@ func (t *singTun) AddIPWhitelist(addr netip.Addr) {
 	t.whitelist = append(t.whitelist, addr)
 }
 
-func (t *singTun) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+func (t *singTun) PrepareConnection(network string, source M.Socksaddr, destination M.Socksaddr) error {
+	return nil
+}
+
+func (t *singTun) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+	metadata := M.Metadata{
+		Source:      source,
+		Destination: destination,
+	}
 	err := t.dns.NewConnection(ctx, conn, metadata)
 	if err == continueHandler {
 		var dialer N.Dialer
@@ -181,14 +186,18 @@ func (t *singTun) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 		serverConn, err := dialer.DialContext(ctx, N.NetworkTCP, metadata.Destination)
 		if err != nil {
 			conn.Close()
-			return err
+			return
 		}
-		return bufio.CopyConn(ctx, conn, serverConn)
+		bufio.CopyConn(ctx, conn, serverConn)
+		return
 	}
-	return err
 }
 
-func (t *singTun) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
+func (t *singTun) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+	metadata := M.Metadata{
+		Source:      source,
+		Destination: destination,
+	}
 	err := t.dns.NewPacketConnection(ctx, conn, metadata)
 	if err == continueHandler {
 		var dialer N.Dialer
@@ -204,11 +213,11 @@ func (t *singTun) NewPacketConnection(ctx context.Context, conn N.PacketConn, me
 		serverConn, err := dialer.ListenPacket(ctx, metadata.Destination)
 		if err != nil {
 			conn.Close()
-			return err
+			return
 		}
-		return bufio.CopyPacketConn(ctx, conn, bufio.NewPacketConn(serverConn))
+		bufio.CopyPacketConn(ctx, conn, bufio.NewPacketConn(serverConn))
+		return
 	}
-	return err
 }
 
 func (t *singTun) NewError(ctx context.Context, err error) {

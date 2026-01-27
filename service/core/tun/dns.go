@@ -233,7 +233,7 @@ func (d *DNS) Exchange(ctx context.Context, msg *D.Msg) (*D.Msg, error) {
 			mode = dnsFake4
 		case D.TypeAAAA:
 			return d.newResponse(msg, D.RcodeSuccess), nil
-			mode = dnsFake6
+			// mode = dnsFake6
 		case D.TypeMX, D.TypeHTTPS:
 			return d.newResponse(msg, D.RcodeSuccess), nil
 		}

@@ -1,13 +1,15 @@
-package common
+package common_test
 
 import (
-	"github.com/v2rayA/v2rayA/db/configure"
 	"testing"
+
+	"github.com/v2rayA/v2rayA/common"
+	"github.com/v2rayA/v2rayA/db/configure"
 )
 
 func TestUrlEncoded(t *testing.T) {
 	str := `试试1+就试试!`
-	t.Log(UrlEncoded(str))
+	t.Log(common.UrlEncoded(str))
 }
 
 func TestFillEmpty(t *testing.T) {
@@ -28,14 +30,14 @@ func TestFillEmpty(t *testing.T) {
 		TransparentType:                    "",
 		AntiPollution:                      "",
 	}
-	if err := FillEmpty(setting, configure.NewSetting()); err != nil {
+	if err := common.FillEmpty(setting, configure.NewSetting()); err != nil {
 		t.Fatal(err)
 	}
 	if setting.SpecialMode != configure.NewSetting().SpecialMode {
 		t.Fatal()
 	}
 	emptySetting := &configure.Setting{}
-	if err := FillEmpty(emptySetting, configure.NewSetting()); err != nil {
+	if err := common.FillEmpty(emptySetting, configure.NewSetting()); err != nil {
 		t.Fatal(err)
 	}
 	if *emptySetting != *configure.NewSetting() {
