@@ -82,7 +82,7 @@
         </b-dropdown>
       </template>
     </b-navbar>
-    <node v-model="runningState" :outbound="outboundName" :observatory="observatory" />
+    <node v-model="runningState" :outbound="outboundName" :observatory="observatory" :latency-progress="latencyProgress" />
     <b-modal :active.sync="showCustomPorts" has-modal-card trap-focus aria-role="dialog" aria-modal
       class="modal-custom-ports">
       <ModalCustomAddress @close="showCustomPorts = false" />
@@ -108,6 +108,7 @@ export default {
     return {
       ws: null,
       observatory: null,
+      latencyProgress: null,
       showSidebar: true,
       statusMap: {
         [this.$t("common.checkRunning")]: "is-light",
@@ -260,6 +261,8 @@ export default {
         msg.body.outboundName === this.outboundName
       ) {
         this.observatory = msg;
+      } else if (msg.type === "latencyProgress") {
+        this.latencyProgress = msg.body;
       }
     },
     handleOutboundDropdownActiveChange(active) {

@@ -746,6 +746,12 @@ export default {
         return null;
       },
     },
+    latencyProgress: {
+      type: Object,
+      default() {
+        return null;
+      },
+    },
   },
   data() {
     return {
@@ -830,6 +836,29 @@ export default {
       });
       if (index >= 0) {
         this.connectedServerInfo[index].selected = true;
+      }
+    },
+    latencyProgress(val) {
+      if (!val || !val.which) {
+        return;
+      }
+      // Find the server in tableData and update its pingLatency
+      const which = val.which;
+      let server = null;
+      if (which._type === "server") {
+        server = this.tableData.servers.find((s) => s.id === which.id);
+      } else if (which._type === "subscriptionServer" && which.sub !== undefined) {
+        const sub = this.tableData.subscriptions[which.sub];
+        if (sub) {
+          server = sub.servers.find((s) => s.id === which.id);
+        }
+      }
+      if (server) {
+        if (val.status === "running") {
+          server.pingLatency = "testing...";
+        } else if (val.status === "done" || val.status === "error") {
+          server.pingLatency = val.latency || "";
+        }
       }
     },
   },
@@ -1380,8 +1409,8 @@ export default {
           };
         })
       );
-      this.checkedRows.forEach((x) => (x.pingLatency = "testing...")); //refresh
-      // this.checkedRows = [];
+      // 清空被测节点的旧延时结果，WebSocket latencyProgress 消息会实时更新节点状态
+      this.checkedRows.forEach((x) => (x.pingLatency = ""));
       let timerTip = setTimeout(() => {
         this.$buefy.toast.open({
           message: this.$t("latency.message"),

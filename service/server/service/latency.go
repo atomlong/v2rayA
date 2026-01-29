@@ -40,7 +40,16 @@ func Ping(which []*configure.Which, timeout time.Duration) (_ []*configure.Which
 		}
 		wg.Add(1)
 		go func(i int) {
+			// Broadcast running status
+			v2ray.BroadcastLatencyProgress("ping", which[i], v2ray.LatencyStatusRunning, "")
 			_ = which[i].Ping(timeout)
+			// Broadcast done status with latency
+			latency := which[i].Latency
+			status := v2ray.LatencyStatusDone
+			if latency == "" || latency == "TIMEOUT" || latency == "SYSTEM ERROR" {
+				status = v2ray.LatencyStatusError
+			}
+			v2ray.BroadcastLatencyProgress("ping", which[i], status, latency)
 			wg.Done()
 		}(i)
 	}
@@ -126,6 +135,9 @@ func TestHttpLatency(which []*configure.Which, timeout time.Duration, maxParalle
 		go func(i int) {
 			cc <- nil
 			defer func() { <-cc; wg.Done() }()
+
+			// Broadcast running status
+			v2ray.BroadcastLatencyProgress("http", which[i], v2ray.LatencyStatusRunning, "")
 
 			// Create minimal template for this node only
 			tmpl := v2ray.NewEmptyTemplate(&configure.Setting{
@@ -270,6 +282,14 @@ func TestHttpLatency(which []*configure.Which, timeout time.Duration, maxParalle
 			if showLog {
 				log.Info("Test done[%v]%v: %v", i+1, which[i].Latency, which[i].Link)
 			}
+
+			// Broadcast done status with latency
+			latency := which[i].Latency
+			status := v2ray.LatencyStatusDone
+			if latency == "" || !strings.HasSuffix(latency, "ms") {
+				status = v2ray.LatencyStatusError
+			}
+			v2ray.BroadcastLatencyProgress("http", which[i], status, latency)
 
 			// Process will be cleaned up by defer cancelProc()
 		}(i)

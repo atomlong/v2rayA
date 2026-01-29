@@ -2,23 +2,25 @@ package v2ray
 
 import (
 	"context"
-	"github.com/devfeel/mapper"
-	"github.com/gin-gonic/gin"
-	"github.com/xtls/xray-core/app/observatory"
-	pb "github.com/xtls/xray-core/app/observatory/command"
-	"github.com/v2rayA/v2rayA/db/configure"
-	"github.com/v2rayA/v2rayA/pkg/util/log"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"net"
 	"strconv"
 	"time"
+
+	"github.com/devfeel/mapper"
+	"github.com/gin-gonic/gin"
+	"github.com/v2rayA/v2rayA/db/configure"
+	"github.com/v2rayA/v2rayA/pkg/util/log"
+	"github.com/xtls/xray-core/app/observatory"
+	pb "github.com/xtls/xray-core/app/observatory/command"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
 	ApiProducts = []string{
 		"observatory",
+		"latencyProgress",
 	}
 	ApiFeed *Feed
 )

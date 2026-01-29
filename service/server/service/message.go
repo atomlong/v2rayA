@@ -1,10 +1,11 @@
 package service
 
 import (
-	"github.com/gorilla/websocket"
-	"github.com/v2rayA/v2rayA/core/v2ray"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/v2rayA/v2rayA/core/v2ray"
 )
 
 const (
@@ -12,8 +13,9 @@ const (
 )
 
 type MessageHandler struct {
-	conn  *websocket.Conn
-	boxes map[string]*v2ray.Box
+	conn    *websocket.Conn
+	boxes   map[string]*v2ray.Box
+	writeMu sync.Mutex
 }
 type Message struct {
 	ProduceTime int64       `json:"produce_time"`
@@ -60,12 +62,15 @@ func (h *MessageHandler) Write() {
 		go func(box *v2ray.Box) {
 			defer wg.Done()
 			for msg := range box.Messages {
+				h.writeMu.Lock()
 				_ = h.conn.SetWriteDeadline(time.Now().Add(writeWait))
-				if err := h.conn.WriteJSON(Message{
+				err := h.conn.WriteJSON(Message{
 					ProduceTime: msg.ProduceTime,
 					Type:        msg.Product,
 					Body:        msg.Body,
-				}); err != nil {
+				})
+				h.writeMu.Unlock()
+				if err != nil {
 					return
 				}
 			}
