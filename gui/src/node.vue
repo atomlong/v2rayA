@@ -297,6 +297,7 @@
         >
           <b-field :label="`SERVER(${tableData.servers.length})`">
             <b-table
+              paginated
               per-page="100"
               :current-page.sync="currentPage.servers"
               :data="tableData.servers"
@@ -437,6 +438,7 @@
             }${sub.info})`"
           >
             <b-table
+              paginated
               :current-page.sync="currentPage[sub.id]"
               per-page="100"
               :data="sub.servers"
