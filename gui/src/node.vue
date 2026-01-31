@@ -442,8 +442,10 @@
               :current-page.sync="currentPage[sub.id]"
               per-page="100"
               :data="sub.servers"
-              :checked-rows.sync="checkedRows"
+              :checked-rows="checkedRows"
               checkable
+              @check="handleCheck"
+              @check-all="handleCheckAllSubscription(sub, $event)"
               :row-class="
                 (row, index) =>
                   row.connected &&
@@ -1599,6 +1601,37 @@ export default {
           this.updateConnectView();
         });
       });
+    },
+    handleCheck(rows, row) {
+      // Do not overwrite checkedRows on header check; handled by check-all
+      if (typeof row === "undefined") {
+        return;
+      }
+      // Normal row selection, update checkedRows directly
+      this.checkedRows = rows;
+    },
+    handleCheckAllSubscription(sub, rows) {
+      // Header check: toggle based on current selection count
+      // Count how many servers in this subscription are already selected
+      const subSelectedCount = sub.servers.filter(s =>
+        this.checkedRows.some(cr => cr.id === s.id && cr._type === s._type)
+      ).length;
+
+      if (subSelectedCount === sub.servers.length) {
+        // Already fully selected, clear selection for this subscription
+        this.checkedRows = this.checkedRows.filter(cr =>
+          !sub.servers.some(s => cr.id === s.id && cr._type === s._type)
+        );
+      } else {
+        // Not fully selected, select the whole subscription group
+        const subServers = sub.servers.slice();
+        // Remove existing selected items in this subscription to avoid duplicates
+        this.checkedRows = this.checkedRows.filter(cr =>
+          !sub.servers.some(s => cr.id === s.id && cr._type === s._type)
+        );
+        // Add the whole subscription group
+        this.checkedRows = [...this.checkedRows, ...subServers];
+      }
     },
   },
 };
